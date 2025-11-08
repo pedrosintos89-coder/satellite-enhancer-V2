@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Satellite Image Enhancer (محسّن صور القمر الصناعي)</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f4f4f9;
+            color: #333;
+            text-align: center;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background-color: #fff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        }
+        h1 {
+            color: #007bff;
+            border-bottom: 2px solid #007bff;
+            padding-bottom: 10px;
+        }
+        .controls {
+            margin-bottom: 20px;
+            padding: 15px;
+            border: 1px dashed #ccc;
+            border-radius: 4px;
+        }
+        .image-display {
+            display: flex;
+            justify-content: space-around;
+            flex-wrap: wrap;
+            margin-top: 20px;
+        }
+        .image-box {
+            width: 45%;
+            min-width: 300px;
+            margin-bottom: 20px;
+            border: 1px solid #ddd;
+            padding: 10px;
+            border-radius: 4px;
+        }
+        img, canvas {
+            max-width: 100%;
+            height: auto;
+            display: block;
+            margin: 10px auto;
+        }
+        /* تصميم شريط التقدم */
+        progress {
+            accent-color: #238636;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>🛰️ تطبيق تحسين صور القمر الصناعي</h1>
+
+    <div class="controls">
+        <label for="imageUpload">
+            **الخطوة 1:** حمّل صورة القمر الصناعي (المضببة):
+        </label>
+        <input type="file" id="imageUpload" accept="image/*">
+        <button id="enhanceButton" onclick="enhanceImage()" disabled>
+            **الخطوة 2:** حسّن الصورة تلقائيًا
+        </button>
+        
+        <progress id="progressBar" value="0" max="100" style="width: 100%; height: 25px; margin-top: 10px; display: none;"></progress>
+        <p id="progressPercent" style="margin-top: 5px; font-weight: bold; display: none; color: #007bff;"></p>
+    </div>
+
+    <div class="image-display">
+        <div class="image-box">
+            <h3>الصورة الأصلية (Avant)</h3>
+            <img id="originalImage" alt="الصورة الأصلية التي تم تحميلها" style="display:none;">
+        </div>
+        <div class="image-box">
+            <h3>الصورة المحسّنة (Après)</h3>
+            <canvas id="enhancedCanvas" style="display:none;"></canvas>
+            <p id="statusMessage"></p>
+        </div>
+    </div>
+</div>
+
+<script>
+    const imageUpload = document.getElementById('imageUpload');
+    const originalImage = document.getElementById('originalImage');
+    const enhancedCanvas = document.getElementById('enhancedCanvas');
+    const enhanceButton = document.getElementById('enhanceButton');
+    const statusMessage = document.getElementById('statusMessage');
+    const ctx = enhancedCanvas.getContext('2d');
+
+    // تفعيل زر التحسين عند تحميل صورة
+    imageUpload.addEventListener('change', function(event) {
+        const file = event.target.files[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                originalImage.src = e.target.result;
+                originalImage.style.display = 'block';
+                enhanceButton.disabled = false;
+                statusMessage.textContent = 'صورة جاهزة للتحسين...';
+                enhancedCanvas.style.display = 'none';
+            };
+            reader.readAsDataURL(file);
+        }
+    });
+
+    // دالة التحسين الاحترافية (باستخدام Web Worker)
+    function enhanceImage() {
+        if (originalImage.src === '') return;
+
+        statusMessage.textContent = 'جاري تحضير الصورة للمعالجة...';
+        enhanceButton.disabled = true;
+        const progressBar = document.getElementById('progressBar');
+        const progressPercent = document.getElementById('progressPercent');
+        
+        progressBar.style.display = 'block';
+        progressPercent.style.display = 'block';
+        progressBar.value = 0;
+        progressPercent.textContent = '0%';
+        
+        const img = new Image();
+        img.onload = function() {
+            enhancedCanvas.width = img.width;
+            enhancedCanvas.height = img.height;
+            enhancedCanvas.style.display = 'block';
+            ctx.drawImage(img, 0, 0);
+
+            const imageData = ctx.getImageData(0, 0, img.width, img.height);
+            
+            // إنشاء Web Worker وإرسال البيانات
+            // ملاحظة: يجب أن يكون ملف worker.js موجوداً في نفس المستودع
+            const worker = new Worker('worker.js');
+            
+            // معالجة الرسائل القادمة من Worker
+            worker.onmessage = function(e) {
+                if (e.data.type === 'progress') {
+                    // تحديث مؤشر التقدم في الواجهة
+                    progressBar.value = e.data.percent;
+                    progressPercent.textContent = e.data.percent + '%';
+                    statusMessage.textContent = `جاري المعالجة... اكتمل ${e.data.percent}%`;
+                } else if (e.data.type === 'result') {
+                    // عرض النتيجة النهائية
+                    const resultData = new Uint8ClampedArray(e.data.data);
+                    const finalImageData = new ImageData(resultData, e.data.width, e.data.height);
+                    ctx.putImageData(finalImageData, 0, 0);
+
+                    statusMessage.textContent = '✅ اكتمل التحسين! يمكنك الآن رؤية النتيجة.';
+                    enhanceButton.disabled = false;
+                    progressBar.style.display = 'none';
+                    progressPercent.style.display = 'none';
+                    worker.terminate(); // إنهاء العامل
+                }
+            };
+
+            // بدء المعالجة
+            worker.postMessage({ imageData, width: img.width, height: img.height }, [imageData.data.buffer]);
+        };
+
+        img.src = originalImage.src;
+    }
+</script>
+
+</body>
+</html>
